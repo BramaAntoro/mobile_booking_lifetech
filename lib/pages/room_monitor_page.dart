@@ -126,6 +126,20 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
     }
   }
 
+  String _getStatusLabel(String? colorName) {
+    switch (colorName) {
+      case 'red':
+        return "Sedang digunakan";
+      case 'yellow':
+        return "Segera";
+      case 'grey':
+        return "Pemeliharaan";
+      case 'blue':
+      default:
+        return "Tersedia";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,7 +206,7 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
                               border: Border.all(color: statusColor),
                             ),
                             child: Text(
-                              status,
+                              _getStatusLabel(displayColor),
                               style: TextStyle(
                                 color: statusColor,
                                 fontWeight: FontWeight.bold,
