@@ -12,12 +12,20 @@ class RoomMonitorPage extends StatefulWidget {
 }
 
 class _RoomMonitorPageState extends State<RoomMonitorPage> {
-  String _myDeviceId = "Mengambil ID..."; 
+  String _myDeviceId = "Mengambil ID...";
+  final TextEditingController _nameController = TextEditingController();
+  DateTime _selectedDateTime = DateTime.now().add(const Duration(minutes: 5));
 
   @override
   void initState() {
     super.initState();
-    _getHardwareDeviceId(); 
+    _getHardwareDeviceId();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
   }
 
   Future<void> _getHardwareDeviceId() async {
@@ -59,6 +67,65 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
     }
   }
 
+  Future<void> _pickDateTime() async {
+    final DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 7)),
+    );
+
+    if (date != null) {
+      if (!mounted) return;
+      final TimeOfDay? time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedDateTime = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+        });
+      }
+    }
+  }
+
+  void _handleBooking(String roomId) async {
+    if (_nameController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nama pemesan harus diisi")),
+      );
+      return;
+    }
+
+    final success = await context.read<RoomCubit>().createBooking(
+      roomId: roomId,
+      bookedByName: _nameController.text,
+      startTime: _selectedDateTime,
+    );
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Booking Berhasil!")),
+        );
+        _nameController.clear();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gagal melakukan booking. Cek jadwal tabrakan.")),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -69,103 +136,169 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
         ),
         centerTitle: true,
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          IconButton(
+            onPressed: () {
+              final state = context.read<RoomCubit>().state;
+              if (state["lockedRoomId"] != null) {
+                context.read<RoomCubit>().fetchRoomDetail(state["lockedRoomId"]);
+              }
+            },
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: BlocBuilder<RoomCubit, Map<String, dynamic>>(
-            builder: (context, state) {
-              final String? lockedRoomId = state["lockedRoomId"];
-              final List<Map<String, dynamic>> rooms =
-                  List<Map<String, dynamic>>.from(state["rooms"] ?? []);
+        child: BlocBuilder<RoomCubit, Map<String, dynamic>>(
+          builder: (context, state) {
+            final String? lockedRoomId = state["lockedRoomId"];
+            final Map<String, dynamic>? roomDetail = state["roomDetail"];
+            final bool isLoading = state["isLoading"] ?? false;
 
-              final lockedRoom = rooms.firstWhere(
-                (r) => r["id"].toString() == lockedRoomId,
-                orElse: () => {
-                  "name": "Ruangan Terkunci",
-                  "status": "UNKNOWN",
-                  "displayColor": "grey",
-                },
-              );
-              final statusColor = _getStatusColor(lockedRoom["displayColor"]);
+            if (lockedRoomId == null) {
+              return const Center(child: Text("Room not locked."));
+            }
 
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.lock_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 72,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      "MODE MONITOR AKTIF",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
+            final String roomName = roomDetail?["name"] ?? "Loading...";
+            final String status = roomDetail?["status"] ?? "AVAILABLE";
+            final String displayColor = roomDetail?["displayColor"] ?? "blue";
+            final List<dynamic> schedules = roomDetail?["bookedSchedules"] ?? [];
+
+            final statusColor = _getStatusColor(displayColor);
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Status Section
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        children: [
+                          Text(
+                            roomName,
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: statusColor),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      lockedRoom["name"] ?? "Nama Ruangan",
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Booking Form
+                  const Text(
+                    "Booking Ruangan",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: "Nama Pemesan",
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: _pickDateTime,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: "Waktu Mulai (30 Menit)",
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.calendar_today),
+                              ),
+                              child: Text(
+                                "${_selectedDateTime.day}/${_selectedDateTime.month}/${_selectedDateTime.year}  ${_selectedDateTime.hour.toString().padLeft(2, '0')}:${_selectedDateTime.minute.toString().padLeft(2, '0')}",
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: isLoading ? null : () => _handleBooking(lockedRoomId),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(50),
+                            ),
+                            child: isLoading
+                                ? const CircularProgressIndicator()
+                                : const Text("Booking Sekarang"),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: statusColor.withOpacity(0.5),
-                          width: 2,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Schedule List
+                  const Text(
+                    "Jadwal Mendatang",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  if (schedules.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Center(child: Text("Belum ada jadwal.")),
+                    )
+                  else
+                    ...schedules.map((s) {
+                      final start = DateTime.parse(s["startTime"]).toLocal();
+                      final end = DateTime.parse(s["endTime"]).toLocal();
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: const Icon(Icons.event_available, color: Colors.green),
+                          title: Text(s["bookedByName"] ?? "Anonim"),
+                          subtitle: Text(
+                            "${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')} - ${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}",
+                          ),
+                          trailing: Text(
+                            "${start.day}/${start.month}",
+                            style: const TextStyle(color: Colors.grey),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        lockedRoom["status"] ?? "AVAILABLE",
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
+                      );
+                    }).toList(),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Text(
                       "Device ID: $_myDeviceId",
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                        fontFamily: 'monospace',
-                      ),
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Device ini dikunci untuk ruangan ini.\nHubungi Admin utama untuk mengubah konfigurasi.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.black45),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () => context.read<RoomCubit>().fetchRooms(),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text("Perbarui Status"),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
+
