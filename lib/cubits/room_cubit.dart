@@ -1,9 +1,12 @@
+  import 'dart:async';
   import 'dart:convert';
   import 'package:flutter_bloc/flutter_bloc.dart';
   import 'package:http/http.dart' as http;
   import 'package:shared_preferences/shared_preferences.dart';
 
   class RoomCubit extends Cubit<Map<String, dynamic>> {
+    Timer? _pollingTimer;
+
     RoomCubit()
       : super({
           "isLoading": false,
@@ -12,8 +15,27 @@
           "lockedRoomId": null,
           "isInitialized": false,
           "roomDetail": null,
-        });
+        }) {
+      _startPolling();
+    }
     final String _baseUrl = "http://localhost:3000/api";
+
+    void _startPolling() {
+      _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        await fetchRooms();
+
+        final String? lockedId = state["lockedRoomId"];
+        if (lockedId != null) {
+          await fetchRoomDetail(lockedId);
+        }
+      });
+    }
+
+    @override
+    Future<void> close() {
+      _pollingTimer?.cancel();
+      return super.close();
+    }
 
     Future<void> checkLocalLockStatus() async {
       final prefs = await SharedPreferences.getInstance();

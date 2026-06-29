@@ -185,7 +185,6 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Status Section
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -220,7 +219,6 @@ class _RoomMonitorPageState extends State<RoomMonitorPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Booking Form
                   const Text(
                     "Booking Ruangan",
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
